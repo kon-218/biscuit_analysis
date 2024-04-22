@@ -98,11 +98,11 @@ from sklearn.preprocessing import StandardScaler
 # Preprocessing
 dunking_data = dunking_data.dropna()  # drop missing values
 le = LabelEncoder()
-dunking_data['biscuit'] = le.fit_transform(dunking_data['biscuit'])  # encode target variable
+dunking_data['biscuit_encoded'] = le.fit_transform(dunking_data['biscuit'])  # encode target variable
 
 # Split data
-X = dunking_data.drop('biscuit', axis=1)
-y = dunking_data['biscuit']
+X = dunking_data.drop(['biscuit','biscuit_encoded'], axis=1)
+y = dunking_data['biscuit_encoded']
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
 # Create classifier pipelines 
@@ -326,7 +326,6 @@ def evaluation_metrics(model, y_true, y_pred):
     return
 
 # %%
-import numpy as np
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 def evaluation_metrics(model, y_true, y_pred):
@@ -513,7 +512,7 @@ X_tr2 = tr2_data.drop('dL', axis=1)
 X_tr3 = tr3_data.drop('dL', axis=1)
 
 # Get the column order of dunking_data (excluding 'biscuit')
-column_order = dunking_data.drop('biscuit', axis=1).columns
+column_order = dunking_data.drop(['biscuit','biscuit_encoded'], axis=1).columns
 
 # Reorder the columns in X_tr1
 X_tr1 = X_tr1[column_order]
@@ -525,6 +524,12 @@ X_tr3 = X_tr3[column_order]
 tr1_biscuit = opt_model_classifier.predict(X_tr1)
 tr2_biscuit = opt_model_classifier.predict(X_tr2)
 tr3_biscuit = opt_model_classifier.predict(X_tr3)
+
+# Decode the biscuit labels
+
+tr1_biscuit = le.inverse_transform(tr1_biscuit)
+tr2_biscuit = le.inverse_transform(tr2_biscuit)
+tr3_biscuit = le.inverse_transform(tr3_biscuit)
 
 # Count number of each type of biscuit in each prediction
 
@@ -556,9 +561,49 @@ print(f'TR3: {scores_tr3.mean()} (+/- {scores_tr3.std()})')
 
 
 # %%
+import matplotlib.patches as mpatches
 
+fig,ax = plt.subplots(1,2, figsize=(10,5))
 
-# %% [markdown]
-# 
+sns.kdeplot(data=dunking_data,ax=ax[0], x="L", y="t", hue="biscuit", fill=True, alpha=0.5)
 
+sns.scatterplot(data=tr1_data, ax=ax[1],x= 'L', y="t", color='orange', label='tr1')
+sns.scatterplot(data=tr2_data, ax=ax[1],x= 'L', y="t", color='g', label='tr2')
+sns.scatterplot(data=tr3_data, ax=ax[1],x= 'L', y="t", color='b', label='tr3')
 
+# Create a legend
+red_patch = mpatches.Patch(color='orange', label='tr1')
+green_patch = mpatches.Patch(color='green', label='tr2')
+blue_patch = mpatches.Patch(color='blue', label='tr3')
+
+legend = ax[1].legend(title='time resolved data', 
+                      handles=[red_patch, green_patch, blue_patch])
+
+plt.tight_layout()
+plt.show()
+
+# %%
+# Check similar entries in the datasets 
+
+df1 = dunking_data.drop(['biscuit','biscuit_encoded'], axis=1)
+df2 = microscopy_data.drop(['biscuit','r', 'L_washburn', 'L_washburn_residuals', 'L_washburn_predicted', 'L_washburn_residuals_predicted'], axis=1)
+
+print(df1,df2)
+
+merged_df = pd.merge(df1, df2, how='outer', indicator=True)
+
+# Rows that are present in both dataframes
+identical_rows = merged_df[merged_df['_merge'] == 'both']
+
+# Keep the identical rows in a separate DataFrame
+identical_rows_df = dunking_data.loc[identical_rows.index]
+
+# drop identical rows from dunking data 
+dunking_data = dunking_data.drop(identical_rows.index)
+
+#identical_rows_df
+#identical_rows.describe()
+#dunking_data.describe()
+identical_rows_df
+
+# %%
