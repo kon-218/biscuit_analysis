@@ -59,6 +59,33 @@ tr3_data['phi'] = contact_angle
 #print(tr1_data)
 #print(dunking_data)
 
+# Check the number of biscuits in each type from dunking_data
+biscuit_counts = dunking_data['biscuit'].value_counts()
+print(biscuit_counts)
+
+# Get the list of numerical columns
+num_cols = dunking_data.select_dtypes(include=['float64', 'int64']).columns
+
+# Create a 3x2 subplot grid
+fig, axs = plt.subplots(2, 3, figsize=(20, 15))
+
+# Flatten the axes array to make indexing easier
+axs = axs.flatten()
+
+# Plot KDE for each numerical column
+for i, col in enumerate(num_cols[:5]):
+    for biscuit_type in dunking_data['biscuit'].unique():
+        sns.kdeplot(dunking_data[dunking_data['biscuit'] == biscuit_type][col], ax=axs[i], label=biscuit_type)
+    axs[i].set_title(f'KDE of {col} by biscuit type')
+    axs[i].legend()
+
+# Remove the last (empty) subplot
+fig.delaxes(axs[-1])
+
+plt.tight_layout()
+plt.show()
+
+
 # %%
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
@@ -136,9 +163,10 @@ print('Optimized RF test accuracy: {}'.format(pipe_PCA_rf_tuning.score(X_test, y
 
 # %%
 # Train RF classifier
-opt_model = Pipeline([('pca', PCA(n_components=4)), ('clf', RandomForestClassifier())])
-opt_model.fit(X_train, y_train)
-print('Optimized RF test accuracy: {}'.format(opt_model.score(X_test, y_test)))
+opt_model_classifier = Pipeline([('pca', PCA(n_components=4)), ('clf', RandomForestClassifier())])
+print(X_train)
+opt_model_classifier.fit(X_train, y_train)
+print('Optimized RF test accuracy: {}'.format(opt_model_classifier.score(X_test, y_test)))
 
 # %%
 from sklearn.preprocessing import LabelEncoder
@@ -151,7 +179,7 @@ def predict_biscuit_type(microscopy_data, opt_model, le):
             raise ValueError(f"Missing required feature variable: {col}")
 
     # Predict biscuit types
-    X_to_pred = dunking_data[required_columns]
+    X_to_pred = microscopy_data[required_columns]
     biscuit_type_encoded = opt_model.predict(X_to_pred)
 
     # Inverse transform the encoded biscuit types
@@ -177,15 +205,42 @@ def predict_biscuit_type(microscopy_data, opt_model, le):
 
     return result
 
+
+
 # %%
 # Use the best model to predict biscuit types for the microscopy data
 from sklearn.model_selection import cross_val_score
 
-microscopy_data_biscuits = predict_biscuit_type(microscopy_data, opt_model, le)
+microscopy_data_biscuits = predict_biscuit_type(microscopy_data, opt_model_classifier, le)
 microscopy_data_biscuits
 
 # %%
 # Investigate the (r) of different biscuit types 
+# EDA microscopy_data
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# Assuming 'biscuit' is the column in 'microscopy_data_biscuits' containing the biscuit types
+microscopy_data['biscuit'] = microscopy_data_biscuits['biscuit']
+
+# Get the list of numerical columns
+num_cols = microscopy_data.select_dtypes(include=['float64', 'int64']).columns
+
+# Create a 3x2 subplot grid
+fig, axs = plt.subplots(2, 3, figsize=(20, 15))
+
+# Flatten the axes array to make indexing easier
+axs = axs.flatten()
+
+# Plot KDE for each numerical column
+for i, col in enumerate(num_cols):
+    for biscuit_type in microscopy_data['biscuit'].unique():
+        sns.kdeplot(microscopy_data[microscopy_data['biscuit'] == biscuit_type][col], ax=axs[i], label=biscuit_type)
+    axs[i].set_title(f'KDE of {col} by biscuit type')
+    axs[i].legend()
+
+plt.tight_layout()
+plt.show()
 
 # %%
 
@@ -445,8 +500,60 @@ evaluation_metrics("Washburn", microscopy_data["L"], microscopy_data["L_washburn
     # L: the distance that the fluid travels into the solid
     # dL: the residuals of the distance that the fluid travels into the solid
     # t: the time at which measurement is taken 
+    # Others constant 
+
+    # All the same as dunking data, can predict biscuit type.
 
 # Predict the biscuit type of each dataset tr1, tr2, tr3
+
+# Prepare the data
+
+X_tr1 = tr1_data.drop('dL', axis=1)
+X_tr2 = tr2_data.drop('dL', axis=1)
+X_tr3 = tr3_data.drop('dL', axis=1)
+
+# Get the column order of dunking_data (excluding 'biscuit')
+column_order = dunking_data.drop('biscuit', axis=1).columns
+
+# Reorder the columns in X_tr1
+X_tr1 = X_tr1[column_order]
+X_tr2 = X_tr2[column_order]
+X_tr3 = X_tr3[column_order]
+
+# Predict the Biscuit type of each dataset tr1, tr2, tr3
+
+tr1_biscuit = opt_model_classifier.predict(X_tr1)
+tr2_biscuit = opt_model_classifier.predict(X_tr2)
+tr3_biscuit = opt_model_classifier.predict(X_tr3)
+
+# Count number of each type of biscuit in each prediction
+
+tr1_biscuit_count = pd.Series(tr1_biscuit).value_counts()
+tr2_biscuit_count = pd.Series(tr2_biscuit).value_counts()
+tr3_biscuit_count = pd.Series(tr3_biscuit).value_counts()
+
+biscuit_counts = [tr1_biscuit_count, tr2_biscuit_count, tr3_biscuit_count]
+
+for i in biscuit_counts:
+    print(i)
+
+
+# Cross-validation of the fits
+from sklearn.model_selection import cross_val_score
+
+# Define the number of folds for cross-validation
+n_folds = 5
+
+# Perform cross-validation on each dataset
+scores_tr1 = cross_val_score(opt_model_classifier, X_tr1, tr1_biscuit, cv=n_folds)
+scores_tr2 = cross_val_score(opt_model_classifier, X_tr2, tr2_biscuit, cv=n_folds)
+scores_tr3 = cross_val_score(opt_model_classifier, X_tr3, tr3_biscuit, cv=n_folds)
+
+# Print the mean and standard deviation of the scores for each dataset
+print(f'TR1: {scores_tr1.mean()} (+/- {scores_tr1.std()})')
+print(f'TR2: {scores_tr2.mean()} (+/- {scores_tr2.std()})')
+print(f'TR3: {scores_tr3.mean()} (+/- {scores_tr3.std()})')
+
 
 # %%
 
